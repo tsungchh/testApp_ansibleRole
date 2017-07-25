@@ -1,0 +1,51 @@
+---
+# tasks file for postgres
+
+- name: Install pip required module
+  pip:
+    name: docker-py
+
+- name: copy systmd unit file
+  template: src=mobydock.service.j2 dest=/etc/systemd/system/mobydock.service mode=0755
+
+- name: add github ssh key
+  copy: 
+    src: /Users/hsutsungchun/.ssh/id_rsa
+    dest: /root/.ssh/id_rsa
+    mode: 0600
+
+- name: ensure github.com is a known host
+  lineinfile:
+    dest: /root/.ssh/known_hosts
+    create: yes
+    state: present
+    line: "{{ lookup('pipe', 'ssh-keyscan -t rsa github.com') }}"
+    regexp: "^github\\.com"
+
+- name: checkout code
+  git:
+    repo: git@github.com:tsungchh/docker-flask.git
+    dest: /apps/mobydock/
+    key_file: /root/.ssh/id_rsa
+    accept_hostkey: yes
+    update: yes
+
+- name: register tag var
+  command: git log --pretty=format:'%h' -n 1
+  args:
+    chdir: /apps/mobydock/
+  register: tag
+
+- debug: msg="docker image tag = {{ tag.stdout }}"
+
+- name: Build, tag and push to docker hub
+  docker_image:
+    name: mobydock
+    path: /apps/mobydock/mobydock
+    tag: latest
+
+- name:  Make sure a service is running
+  systemd: 
+    state: restarted 
+    name: mobydock
+    enabled: yes
